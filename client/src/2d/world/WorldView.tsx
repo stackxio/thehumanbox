@@ -1,3 +1,7 @@
+import { terrainDetail } from './terrain-detail'
+import { MapCameraController } from './MapCameraController'
+import { WorldMapHud } from './WorldMapHud'
+import { isMapControl, type MapCommand } from './camera-controls'
 import { drawFaunaSprite } from './fauna-sprites'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -7,10 +11,8 @@ import {
   Transform,
   Sprite,
   Camera2D,
-  useCamera,
   useEntity,
   useDynamicCanvas,
-  useGestures,
   type GameControls,
 } from 'cubeforge'
 import type { AnimalState, OrganismState, WorldState } from '../../types'
@@ -380,7 +382,7 @@ function buildFoamPaths(tiles: number[][], width: number, height: number): FoamP
       // Same hash the animated pulse used, bucketed four ways so the
       // shimmer keeps its spatial variety with four fills per frame.
       let h = (col * 374761393 + row * 668265263) | 0
-      h = ((h ^ (h >>> 13)) * 1274126177) >>> 0
+      h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0
       const tp = thick[h & 3]
       if (shore & EDGE_NORTH) {
         thin.rect(px, py, TILE, 1)
@@ -766,7 +768,7 @@ function pickRenderScale(zoom: number, lowPerf: boolean): number {
 
 function vnHash(x: number, y: number): number {
   let h = (x * 374761393 + y * 668265263) | 0
-  h = ((h ^ (h >>> 13)) * 1274126177) | 0
+  h = Math.imul(h ^ (h >>> 13), 1274126177) | 0
   return ((h >>> 0) & 0xffff) / 0xffff
 }
 
@@ -777,11 +779,11 @@ const MAX_INCREMENTAL_TILES = 6000
 
 function varAmountForTile(tid: number): number {
   if (tid === 2 || tid === 9) return 2
-  if (tid === 1 || tid === 3) return 5
-  if (tid === 5) return 8
+  if (tid === 1 || tid === 3) return 2
+  if (tid === 5) return 3
   if (tid === 6) return 9
   if (tid === 12) return 3
-  if (tid === 13) return 5
+  if (tid === 13) return 2
   return 4
 }
 
@@ -849,7 +851,7 @@ function paintTileBlock(
   }
 
   const macro = valueNoise(col / 42, row / 42) * 0.65 + valueNoise(col / 13 + 7, row / 13 + 7) * 0.35
-  let shading = ((macro - 0.5) * (isWater ? 5 : 14)) | 0
+  let shading = ((macro - 0.5) * (isWater ? 5 : 25)) | 0
   if (!isWater) {
     const grassy = tid === 1 || tid === 3 || tid === 6 || tid === 13
     const landTint = SEASON_LAND_TINT[season ?? '']
@@ -878,9 +880,9 @@ function paintTileBlock(
       const clusterX = gx >> 1
       const clusterY = gy >> 1
       let h = (clusterX * 374761393 + clusterY * 668265263) | 0
-      h = ((h ^ (h >>> 13)) * 1274126177) | 0
+      h = Math.imul(h ^ (h >>> 13), 1274126177) | 0
       const dither = ((gx ^ gy) & 1) === 0 ? -1 : 1
-      const k = (((((h >>> 0) & 0xff) - 128) * varAmt) >> 7) + dither
+      const k = (((((h >>> 0) & 0xff) - 128) * varAmt) >> 7) + dither + terrainDetail(tid, gx, gy)
       let rr = r + k + shading
       let gg = g + k + shading
       let bb = b + k + shading
@@ -1059,7 +1061,7 @@ function getBaseLayerCanvas(world: WorldState): HTMLCanvasElement | null {
         if (row < by0) by0 = row
         if (row > by1) by1 = row
       }
-      const m = Math.min(3, width, height)
+      const m = Math.min(4, width, height)
       bx0 = Math.max(0, bx0 - m)
       by0 = Math.max(0, by0 - m)
       bx1 = Math.min(width - 1, bx1 + m)
@@ -1075,12 +1077,17 @@ function getBaseLayerCanvas(world: WorldState): HTMLCanvasElement | null {
         (by1 - by0 + 1) * TILE,
       )
       const only = { x0: bx0, y0: by0, x1: bx1, y1: by1 }
+      baseCtx.save()
+      baseCtx.beginPath()
+      baseCtx.rect(bx0 * TILE, by0 * TILE, (bx1 - bx0 + 1) * TILE, (by1 - by0 + 1) * TILE)
+      baseCtx.clip()
       if (biomes) {
         drawNaturalDecor(baseCtx, width, height, tiles, biomes, origin_x, origin_y, only)
       }
       if (biomes && ATLAS_TOWN.complete) {
         drawTrees(baseCtx, width, height, tiles, biomes, origin_x, origin_y, only, season)
       }
+      baseCtx.restore()
       // Refresh derived layers for the affected region.
       updateScaledBaseRegion(bx0, by0, bx1, by1)
       // Foam geometry is cheap to rebuild relative to pixels and keeps
@@ -1311,7 +1318,7 @@ function drawWorldOnCanvas(
         for (let col = c0 & ~1; col < c1; col += 2) {
           if (!isPermanentWaterTile(tiles[row]?.[col])) continue
           let h = (col * 374761393 + row * 668265263) | 0
-          h = ((h ^ (h >>> 13)) * 1274126177) >>> 0
+          h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0
           const phase = ((h & 0xff) / 255) * Math.PI * 2
           const blink = Math.sin(tt * 1.7 + phase) + Math.sin(tt * 0.9 + phase * 1.3)
           if (blink < 1.3) continue
@@ -1362,7 +1369,7 @@ function drawWorldOnCanvas(
           const d = permanentWaterDepth(tiles[row]?.[col], dm?.[row]?.[col])
           if (d === null || d < 180) continue
           let h = (col * 374761393 + row * 668265263) | 0
-          h = ((h ^ (h >>> 13)) * 1274126177) >>> 0
+          h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0
           const pulse = Math.sin(shimmerT * 2.1 + ((h & 0xff) / 255) * Math.PI * 2)
           if (pulse < 0.6) continue
           ctx.fillRect(col * TILE + ((h >>> 8) & 3), row * TILE + ((h >>> 10) & 3), 2, 1)
@@ -1380,7 +1387,7 @@ function drawWorldOnCanvas(
           const d = permanentWaterDepth(tiles[row]?.[col], dm?.[row]?.[col])
           if (d === null || d < 180) continue
           let h = (col * 374761393 + row * 668265263) | 0
-          h = ((h ^ (h >>> 13)) * 1274126177) >>> 0
+          h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0
           if ((h + wavePhase) % 7 !== 0) continue
           const wx = col * TILE + 1 + ((h >>> 8) & 1)
           const wy = row * TILE + 2 + ((wavePhase + (h >>> 10)) & 3)
@@ -2944,163 +2951,27 @@ function WorldSprite({
   )
 }
 
-function CameraController({
-  worldW,
-  worldH,
-  containerW,
-  containerH,
-  containerEl,
-  cameraStateRef,
-  followTarget,
-}: {
-  worldW: number
-  worldH: number
-  containerW: number
-  containerH: number
-  containerEl: HTMLDivElement | null
-  cameraStateRef: React.MutableRefObject<{ x: number; y: number; zoom: number }>
-  followTarget: { x: number; y: number } | null
-}) {
-  const camera = useCamera()
-  const drag = useRef({ active: false, startPX: 0, startPY: 0, startCamX: 0, startCamY: 0 })
-  const initialised = useRef(false)
-  const minZoom = Math.min(containerW / worldW, containerH / worldH) * 0.85
-
-  useEffect(() => {
-    if (initialised.current) return
-    const tx = worldW / 2
-    const ty = worldH / 2
-    const fitZoom = Math.max(minZoom, Math.min(containerW / worldW, containerH / worldH) * 0.95)
-    let raf = 0
-    const trySet = () => {
-      camera.setPosition(tx, ty)
-      camera.setZoom(fitZoom)
-      const pos = camera.getPosition?.()
-      if (!pos || Math.abs(pos.x - tx) > 2 || Math.abs(pos.y - ty) > 2) {
-        raf = requestAnimationFrame(trySet)
-      } else {
-        cameraStateRef.current = { x: tx, y: ty, zoom: fitZoom }
-        initialised.current = true
-      }
-    }
-    raf = requestAnimationFrame(trySet)
-    return () => cancelAnimationFrame(raf)
-  }, [camera, cameraStateRef, containerH, containerW, minZoom, worldH, worldW])
-
-  const prevFollowRef = useRef<{ x: number; y: number } | null>(null)
-  useEffect(() => {
-    if (!followTarget) return
-    const prev = prevFollowRef.current
-    const isNewTarget =
-      !prev || Math.abs(prev.x - followTarget.x) > 30 || Math.abs(prev.y - followTarget.y) > 30
-    camera.setPosition(followTarget.x, followTarget.y)
-    cameraStateRef.current.x = followTarget.x
-    cameraStateRef.current.y = followTarget.y
-    if (isNewTarget) {
-      const TRACK_ZOOM = 3.5
-      camera.setZoom(TRACK_ZOOM)
-      cameraStateRef.current.zoom = TRACK_ZOOM
-    }
-    prevFollowRef.current = { x: followTarget.x, y: followTarget.y }
-  }, [followTarget, camera, cameraStateRef])
-
-  useEffect(() => {
-    if (!containerEl) return
-
-    const clamp = (x: number, y: number, zoom: number) => {
-      const halfW = containerW / (2 * zoom)
-      const halfH = containerH / (2 * zoom)
-      const cx = halfW >= worldW / 2 ? x : Math.max(halfW, Math.min(worldW - halfW, x))
-      const cy = halfH >= worldH / 2 ? y : Math.max(halfH, Math.min(worldH - halfH, y))
-      return { x: cx, y: cy }
-    }
-
-    const onDown = (e: PointerEvent) => {
-      drag.current.active = true
-      drag.current.startPX = e.clientX
-      drag.current.startPY = e.clientY
-      const pos = camera.getPosition()
-      drag.current.startCamX = pos.x
-      drag.current.startCamY = pos.y
-    }
-    const onMove = (e: PointerEvent) => {
-      if (!drag.current.active) return
-      const zoom = camera.getZoom()
-      const raw = {
-        x: drag.current.startCamX - (e.clientX - drag.current.startPX) / zoom,
-        y: drag.current.startCamY - (e.clientY - drag.current.startPY) / zoom,
-      }
-      const { x: nx, y: ny } = clamp(raw.x, raw.y, zoom)
-      camera.setPosition(nx, ny)
-      cameraStateRef.current.x = nx
-      cameraStateRef.current.y = ny
-    }
-    const onUp = () => {
-      drag.current.active = false
-    }
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault()
-      const factor = e.deltaY < 0 ? 1.1 : 0.9
-      const nz = Math.max(minZoom, Math.min(8, camera.getZoom() * factor))
-      camera.setZoom(nz)
-      cameraStateRef.current.zoom = nz
-      const pos = camera.getPosition()
-      const { x, y } = clamp(pos.x, pos.y, nz)
-      camera.setPosition(x, y)
-      cameraStateRef.current.x = x
-      cameraStateRef.current.y = y
-    }
-
-    containerEl.addEventListener('pointerdown', onDown)
-    containerEl.addEventListener('wheel', onWheel, { passive: false })
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp)
-    return () => {
-      containerEl.removeEventListener('pointerdown', onDown)
-      containerEl.removeEventListener('wheel', onWheel)
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
-    }
-  }, [camera, cameraStateRef, containerEl, containerW, containerH, minZoom, worldW, worldH])
-
-  const clampCam = useRef<((x: number, y: number, zoom: number) => { x: number; y: number }) | null>(null)
-  clampCam.current = (x, y, zoom) => {
-    const halfW = containerW / (2 * zoom)
-    const halfH = containerH / (2 * zoom)
-    const cx = halfW >= worldW / 2 ? x : Math.max(halfW, Math.min(worldW - halfW, x))
-    const cy = halfH >= worldH / 2 ? y : Math.max(halfH, Math.min(worldH - halfH, y))
-    return { x: cx, y: cy }
-  }
-
-  useGestures(
-    {
-      onPinch: ({ delta }) => {
-        const factor = 1 + delta
-        const nz = Math.max(minZoom, Math.min(8, camera.getZoom() * factor))
-        camera.setZoom(nz)
-        cameraStateRef.current.zoom = nz
-        const pos = camera.getPosition()
-        const { x, y } = clampCam.current!(pos.x, pos.y, nz)
-        camera.setPosition(x, y)
-        cameraStateRef.current.x = x
-        cameraStateRef.current.y = y
-      },
-    },
-    { target: containerEl },
-  )
-
-  return null
-}
-
 interface Props {
   world: WorldState
   interp?: InterpRefs
   rendererPaused?: boolean
   sandboxArmed?: boolean
+  sandboxLabel?: string | null
+  sandboxStatus?: string | null
+  sandboxRadius?: number
   onSandboxApply?: (worldX: number, worldY: number) => void
 }
 
-export function WorldView({ world, interp, rendererPaused = false, sandboxArmed, onSandboxApply }: Props) {
+export function WorldView({
+  world,
+  interp,
+  rendererPaused = false,
+  sandboxArmed,
+  sandboxLabel,
+  sandboxStatus,
+  sandboxRadius,
+  onSandboxApply,
+}: Props) {
   const selectedOrgId = useUIStore((s) => s.selectedOrgId)
   const followOrgId = useUIStore((s) => s.followOrgId)
   const overlay = useUIStore((s) => s.overlay)
@@ -3118,6 +2989,7 @@ export function WorldView({ world, interp, rendererPaused = false, sandboxArmed,
   const oy = world.grid.origin_y ?? 0
 
   const containerRef = useRef<HTMLDivElement>(null)
+  const commandRef = useRef<MapCommand | null>(null)
   const cameraStateRef = useRef({ x: cx, y: cy, zoom: 1.5 })
   const [dims, setDims] = useState({ w: 0, h: 0 })
   const [mapReady, setMapReady] = useState(false)
@@ -3149,17 +3021,23 @@ export function WorldView({ world, interp, rendererPaused = false, sandboxArmed,
   // from a drag-then-release (pan). Without this every pan ends with
   // an accidental org-select on the tile under the release point -
   // especially painful on touch where finger jitter is large.
-  const pointerDownPos = useRef<{ x: number; y: number } | null>(null)
+  const pointerDownPos = useRef<{ x: number; y: number; moved: boolean; id: number } | null>(null)
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    pointerDownPos.current = { x: e.clientX, y: e.clientY }
+    if (isMapControl(e.target)) return
+    if (!e.isPrimary) {
+      if (pointerDownPos.current) pointerDownPos.current.moved = true
+      return
+    }
+    pointerDownPos.current = { x: e.clientX, y: e.clientY, moved: false, id: e.pointerId }
   }
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (isMapControl(e.target)) return
     const down = pointerDownPos.current
     pointerDownPos.current = null
     if (down) {
       const dx = e.clientX - down.x
       const dy = e.clientY - down.y
-      if (dx * dx + dy * dy > 36) return
+      if (down.moved || dx * dx + dy * dy > 36) return
     }
     const rect = containerRef.current!.getBoundingClientRect()
     const sx = e.clientX - rect.left
@@ -3170,7 +3048,22 @@ export function WorldView({ world, interp, rendererPaused = false, sandboxArmed,
     const worldX = canvasTileX + ox
     const worldY = canvasTileY + oy
 
+    if (
+      canvasTileX < 0 ||
+      canvasTileY < 0 ||
+      canvasTileX >= world.grid.width ||
+      canvasTileY >= world.grid.height
+    )
+      return
+
     if (sandboxArmed && onSandboxApply) {
+      if (
+        Math.round(worldX) < ox ||
+        Math.round(worldX) >= ox + world.grid.width ||
+        Math.round(worldY) < oy ||
+        Math.round(worldY) >= oy + world.grid.height
+      )
+        return
       onSandboxApply(worldX, worldY)
       return
     }
@@ -3190,10 +3083,10 @@ export function WorldView({ world, interp, rendererPaused = false, sandboxArmed,
     const isCoarse = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches
 
     let nearestOrg: { id: string; dist: number } | null = null
-    let nearestOrgDist = isCoarse ? 5.0 : 3.0
-    for (const org of world.viewport_organisms ?? world.organisms) {
+    let nearestOrgDist = Math.min(5, Math.max(1.2, (isCoarse ? 26 : 16) / (TILE * zoom)))
+    for (const org of world.viewport_organisms?.length ? world.viewport_organisms : world.organisms) {
       if (!org.alive) continue
-      const d = Math.abs(org.x - worldX) + Math.abs(org.y - worldY)
+      const d = Math.hypot(org.x - worldX, org.y - worldY)
       if (d < nearestOrgDist) {
         nearestOrgDist = d
         nearestOrg = { id: org.id, dist: d }
@@ -3255,6 +3148,9 @@ export function WorldView({ world, interp, rendererPaused = false, sandboxArmed,
   return (
     <div
       ref={containerRef}
+      className="map2d-world"
+      tabIndex={0}
+      aria-label="Interactive world map"
       style={{
         flex: 1,
         minWidth: 0,
@@ -3267,6 +3163,14 @@ export function WorldView({ world, interp, rendererPaused = false, sandboxArmed,
         touchAction: 'none',
       }}
       onPointerDown={handlePointerDown}
+      onPointerMove={(e) => {
+        const down = pointerDownPos.current
+        if (down && ((e.clientX - down.x) ** 2 + (e.clientY - down.y) ** 2 > 36 || e.pointerId !== down.id))
+          down.moved = true
+      }}
+      onPointerCancel={() => {
+        if (pointerDownPos.current) pointerDownPos.current.moved = true
+      }}
       onClick={handleClick}
     >
       <div
@@ -3308,7 +3212,8 @@ export function WorldView({ world, interp, rendererPaused = false, sandboxArmed,
               />
             </Entity>
 
-            <CameraController
+            <MapCameraController
+              commandRef={commandRef}
               worldW={W}
               worldH={H}
               containerW={dims.w}
@@ -3319,6 +3224,18 @@ export function WorldView({ world, interp, rendererPaused = false, sandboxArmed,
             />
           </World>
         </Game>
+      )}
+      {mapReady && !viewFlags.hideUI && (
+        <WorldMapHud
+          world={world}
+          cameraRef={cameraStateRef}
+          commandRef={commandRef}
+          viewport={dims}
+          container={containerRef.current}
+          toolLabel={sandboxArmed ? sandboxLabel : null}
+          toolRadius={sandboxRadius}
+          toolStatus={sandboxStatus}
+        />
       )}
     </div>
   )

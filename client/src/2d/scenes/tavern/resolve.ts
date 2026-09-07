@@ -9,8 +9,8 @@ function findTavernAnchor(world: WorldState, lineageId: string): { x: number; y:
   let best: { x: number; y: number; score: number } | null = null
   let hasMatchingTavern = false
   for (const b of buildings) {
-    if (b.kind !== 'tavern') continue
-    const owner = (b as { lineage_id?: string }).lineage_id
+    if (b.kind.toLowerCase() !== 'tavern') continue
+    const owner = b.owner_lineage ?? b.lineage_id
     if (owner && owner !== lineageId) continue
     hasMatchingTavern = true
     if (!getBuildingState(b).isOperational) continue

@@ -1,3 +1,4 @@
+import { WorldToolSearch } from './WorldToolSearch'
 import { useState } from 'react'
 import clsx from 'clsx'
 import {
@@ -188,6 +189,7 @@ export function SandboxToolbar({
           )}
         </div>
         <div className={clsx('sandbox-utility', onSave && 'has-save')}>
+          <WorldToolSearch onPick={onPick} />
           <button
             type="button"
             className={clsx('sandbox-playback', runtimePaused && 'paused')}

@@ -295,18 +295,19 @@ function LiveApp() {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent): void {
-      if (e.key !== 'Tab') return
+      if (e.key !== '[' && e.key !== ']') return
+      if (e.metaKey || e.ctrlKey || e.altKey) return
       const target = e.target as HTMLElement | null
       if (
         target &&
-        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+        (target.closest('input, textarea, select, button, [role="dialog"]') || target.isContentEditable)
       ) {
         return
       }
       const orgs = world?.organisms.filter((o) => o.alive)
       if (!orgs || orgs.length === 0) return
       e.preventDefault()
-      const dir = e.shiftKey ? -1 : 1
+      const dir = e.key === '[' ? -1 : 1
       const currentIdx = selectedOrgId ? orgs.findIndex((o) => o.id === selectedOrgId) : -1
       const next = orgs[(currentIdx + dir + orgs.length) % orgs.length]
       if (next) {
@@ -319,6 +320,35 @@ function LiveApp() {
   }, [world, selectedOrgId])
 
   useEffect(() => {
+    const togglePlayback = (event: KeyboardEvent) => {
+      if (!sandboxControlsEnabled) return
+      if (event.code !== 'Space' || event.repeat || event.ctrlKey || event.metaKey || event.altKey) return
+      if (!(event.target instanceof HTMLElement) || !event.target.classList.contains('map2d-world')) return
+      event.preventDefault()
+      onPickTool({
+        id: 'keyboard-playback',
+        label: runtimeState.paused ? 'play' : 'pause',
+        icon: '',
+        mode: 'instant',
+        time: { control: runtimeState.paused ? 'resume' : 'pause' },
+      })
+    }
+    window.addEventListener('keydown', togglePlayback)
+    return () => window.removeEventListener('keydown', togglePlayback)
+  }, [onPickTool, runtimeState.paused, sandboxControlsEnabled])
+
+  useEffect(() => {
+    const clearTool = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setArmedTool(null)
+        setTemporarySandboxStatus(null)
+      }
+    }
+    window.addEventListener('keydown', clearTool)
+    return () => window.removeEventListener('keydown', clearTool)
+  }, [setTemporarySandboxStatus])
+
+  useEffect(() => {
     // H toggles immersive mode (hides panels + bottom dock). Matches
     // the observation-mode option in the command palette.
     function onKey(e: KeyboardEvent): void {
@@ -326,7 +356,7 @@ function LiveApp() {
       const target = e.target as HTMLElement | null
       if (
         target &&
-        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+        (target.closest('input, textarea, select, button, [role="dialog"]') || target.isContentEditable)
       ) {
         return
       }
@@ -513,6 +543,12 @@ function LiveApp() {
                   interp={interp}
                   rendererPaused={desktopRendererPaused}
                   sandboxArmed={sandboxControlsEnabled && !!armedTool}
+                  sandboxLabel={armedTool?.label}
+                  sandboxStatus={sandboxStatus}
+                  sandboxRadius={(() => {
+                    const preview = armedTool?.build?.(0, 0, brush)
+                    return preview && 'radius' in preview ? (preview.radius ?? 0) : 0
+                  })()}
                   onSandboxApply={handleSandboxApply}
                 />
               )}

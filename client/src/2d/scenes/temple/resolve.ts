@@ -24,17 +24,18 @@ function findTempleAnchor(world: WorldState, lineageId: string): { x: number; y:
   let best: { x: number; y: number; score: number } | null = null
   let hasMatchingTemple = false
   for (const b of buildings) {
-    if (!TEMPLE_KINDS.has(b.kind)) continue
-    const owner = (b as { lineage_id?: string }).lineage_id
+    const kind = b.kind.toLowerCase()
+    if (!TEMPLE_KINDS.has(kind)) continue
+    const owner = b.owner_lineage ?? b.lineage_id
     if (owner && owner !== lineageId) continue
     hasMatchingTemple = true
     if (!getBuildingState(b).isOperational) continue
     const rank =
-      b.kind === 'cathedral'
+      kind === 'cathedral'
         ? 4
-        : b.kind === 'temple'
+        : kind === 'temple'
           ? 3
-          : b.kind === 'mosque' || b.kind === 'synagogue' || b.kind === 'pagoda'
+          : kind === 'mosque' || kind === 'synagogue' || kind === 'pagoda'
             ? 2
             : 1
     const score = rank + (b.condition ?? 1)
