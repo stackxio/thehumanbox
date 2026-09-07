@@ -1,5 +1,4 @@
 import { useEffect, useRef, type MutableRefObject } from 'react'
-import { useCamera, useGestures } from 'cubeforge'
 import { useUIStore } from '../../stores/store'
 import { clampMapCamera, isMapControl, zoomMapAt, type MapCamera, type MapCommand } from './camera-controls'
 
@@ -23,33 +22,23 @@ export function MapCameraController({
   commandRef,
   followTarget,
 }: Props) {
-  const camera = useCamera()
   const initialized = useRef(false)
   const previousFollow = useRef(false)
   const minZoom = Math.min(containerW / worldW, containerH / worldH) * 0.85
   const apply = (next: MapCamera) => {
     const bounded = clampMapCamera(next, { w: worldW, h: worldH }, { w: containerW, h: containerH })
-    camera.setZoom(bounded.zoom)
-    camera.setPosition(bounded.x, bounded.y)
     cameraStateRef.current = bounded
   }
   const applyRef = useRef(apply)
   applyRef.current = apply
 
   useEffect(() => {
-    let raf = 0
-    const init = () => {
-      if (initialized.current) return
+    if (!initialized.current) {
+      initialized.current = true
       const zoom = Math.min(containerW / worldW, containerH / worldH) * 0.95
       applyRef.current({ x: worldW / 2, y: worldH / 2, zoom })
-      const position = camera.getPosition()
-      if (Math.abs(position.x - worldW / 2) < 2 && Math.abs(position.y - worldH / 2) < 2)
-        initialized.current = true
-      else raf = requestAnimationFrame(init)
-    }
-    raf = requestAnimationFrame(init)
-    return () => cancelAnimationFrame(raf)
-  }, [camera, worldW, worldH, containerW, containerH])
+    } else applyRef.current(cameraStateRef.current)
+  }, [worldW, worldH, containerW, containerH, cameraStateRef])
 
   useEffect(() => {
     if (followTarget)
@@ -189,14 +178,45 @@ export function MapCameraController({
     }
   }, [cameraStateRef, commandRef, containerEl, containerW, containerH, minZoom, worldW, worldH])
 
-  useGestures(
-    {
-      onPinch: ({ delta }) => {
+  useEffect(() => {
+    if (!containerEl) return
+    let distance = 0
+    const pinch = (e: TouchEvent) => {
+      if (e.touches.length !== 2 || isMapControl(e.target)) {
+        distance = 0
+        return
+      }
+      e.preventDefault()
+      const [a, b] = [e.touches[0], e.touches[1]]
+      const next = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)
+      if (distance > 0 && next > 0) {
         const current = cameraStateRef.current
-        applyRef.current({ ...current, zoom: Math.max(minZoom, Math.min(8, current.zoom * (1 + delta))) })
-      },
-    },
-    { target: containerEl },
-  )
+        const rect = containerEl.getBoundingClientRect()
+        useUIStore.getState().followOrg(null)
+        applyRef.current(
+          zoomMapAt(
+            current,
+            Math.max(minZoom, Math.min(8, (current.zoom * next) / distance)),
+            { x: (a.clientX + b.clientX) / 2 - rect.left, y: (a.clientY + b.clientY) / 2 - rect.top },
+            { w: containerW, h: containerH },
+          ),
+        )
+      }
+      distance = next
+    }
+    const reset = () => {
+      distance = 0
+    }
+    containerEl.addEventListener('touchstart', pinch, { passive: false })
+    containerEl.addEventListener('touchmove', pinch, { passive: false })
+    containerEl.addEventListener('touchend', reset)
+    containerEl.addEventListener('touchcancel', reset)
+    return () => {
+      containerEl.removeEventListener('touchstart', pinch)
+      containerEl.removeEventListener('touchmove', pinch)
+      containerEl.removeEventListener('touchend', reset)
+      containerEl.removeEventListener('touchcancel', reset)
+    }
+  }, [containerEl, cameraStateRef, minZoom, containerW, containerH])
   return null
 }

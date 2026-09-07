@@ -4,17 +4,6 @@ import { WorldMapHud } from './WorldMapHud'
 import { isMapControl, type MapCommand } from './camera-controls'
 import { drawFaunaSprite } from './fauna-sprites'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import {
-  Game,
-  World,
-  Entity,
-  Transform,
-  Sprite,
-  Camera2D,
-  useEntity,
-  useDynamicCanvas,
-  type GameControls,
-} from 'cubeforge'
 import type { AnimalState, OrganismState, WorldState } from '../../types'
 import type { InterpRefs } from '../../simulation/useSimulation'
 import { useUIStore, type ViewFlags } from '../../stores/store'
@@ -57,7 +46,7 @@ import {
 import { oceanColor } from './landscape-style'
 
 import { LOW_PERF } from '../../lib/perf'
-import { syncRendererLoopPause } from '../../lib/desktopVisibility'
+import { logger } from '../../lib/logger'
 import {
   deterministicAppearanceIndex,
   resolveAgeStage,
@@ -749,13 +738,10 @@ function getWaterFxLayers(scale: number): WaterFxLayers | null {
   return _waterFx
 }
 
-// The dynamic canvas used to be world-sized (4800x2400 for the 600x300
-// grid) and its entire bitmap was re-uploaded to the GPU every frame -
-// tens of MB of texture traffic per frame that capped rendering at
-// slideshow framerates. The engine samples the texture linearly anyway,
-// so we render into a canvas sized for what the screen can actually
-// show at the current camera zoom. Quantized to 1/8 steps so pinch-
-// zooming doesn't thrash canvas/texture reallocation every frame.
+// Cache terrain and decoration layers at a resolution appropriate for
+// the viewport. Quantized steps avoid rebuilding them on every zoom event.
+// The visible canvas itself stays viewport-sized and uses Canvas 2D;
+// presenting a 2D bitmap must not depend on WebGL availability.
 function pickRenderScale(zoom: number, lowPerf: boolean): number {
   if (!Number.isFinite(zoom) || zoom <= 0) return 1
   const dpr = Math.min(2, window.devicePixelRatio || 1)
@@ -2667,7 +2653,7 @@ function drawWorldOnCanvas(
   }
 }
 
-function WorldSprite({
+function WorldCanvas({
   world,
   interp,
   selectedOrgId,
@@ -2676,8 +2662,7 @@ function WorldSprite({
   viewFlags,
   rendererPaused,
   onFirstDraw,
-  atX,
-  atY,
+  onDrawError,
   cameraStateRef,
   viewportDims,
 }: {
@@ -2689,26 +2674,15 @@ function WorldSprite({
   viewFlags: ViewFlags
   rendererPaused: boolean
   onFirstDraw: () => void
-  atX: number
-  atY: number
+  onDrawError: (message: string) => void
   cameraStateRef?: React.MutableRefObject<{ x: number; y: number; zoom: number }>
   viewportDims?: { w: number; h: number }
 }) {
-  useEntity()
-
-  const W = world.grid.width * TILE
-  const H = world.grid.height * TILE
-  const [renderScale, setRenderScale] = useState(1)
-  const renderScaleRef = useRef(1)
-  // Even dimensions keep the pixel-art grid aligned when scaled.
-  const dynW = Math.max(TILE, Math.round((W * renderScale) / 2) * 2)
-  const dynH = Math.max(TILE, Math.round((H * renderScale) / 2) * 2)
-  const dyn = useDynamicCanvas(dynW, dynH)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
 
   const hasDrawn = useRef(false)
   const cachedDepth = useRef<number[][] | null>(null)
   const cachedBiomes = useRef<number[][] | null>(null)
-  const filledDynId = useRef<string | null>(null)
   const orgInterpCache = useRef<OrgInterpCache>({
     source: null,
     prevSource: null,
@@ -2724,14 +2698,6 @@ function WorldSprite({
     prevById: new Map(),
   })
 
-  useLayoutEffect(() => {
-    if (filledDynId.current === dyn.id) return
-    filledDynId.current = dyn.id
-    dyn.ctx.fillStyle = '#1a4a80'
-    dyn.ctx.fillRect(0, 0, dynW, dynH)
-    dyn.markDirty()
-  }, [dyn, dynW, dynH])
-
   const worldRef = useRef<WorldState | null>(world)
   const selectedOrgIdRef = useRef<string | null>(selectedOrgId)
   const overlayRef = useRef<string | null>(overlay)
@@ -2744,7 +2710,16 @@ function WorldSprite({
   viewFlagsRef.current = viewFlags
 
   useEffect(() => {
-    if (!interp || rendererPaused) return
+    if (rendererPaused || !viewportDims || !cameraStateRef) return
+    const canvas = canvasRef.current
+    const ctx = canvas?.getContext('2d')
+    if (!canvas || !ctx) {
+      onDrawError('The browser could not create a 2D canvas. Try reloading this page.')
+      return
+    }
+    const dpr = Math.min(2, window.devicePixelRatio || 1)
+    canvas.width = Math.max(1, Math.round(viewportDims.w * dpr))
+    canvas.height = Math.max(1, Math.round(viewportDims.h * dpr))
     let raf = 0
     let stopped = false
     let lastDrawnAt: number = 0
@@ -2767,11 +2742,11 @@ function WorldSprite({
       if (w.grid.depth_map) cachedDepth.current = w.grid.depth_map as number[][]
       if (w.grid.biomes) cachedBiomes.current = w.grid.biomes as number[][]
 
-      const cur = interp.current.current
-      const prev = interp.prev.current
-      const curServerAt = interp.currentServerAt.current
-      const prevServerAt = interp.prevServerAt.current
-      const currentReceivedAt = interp.currentReceivedAt.current
+      const cur = interp?.current.current
+      const prev = interp?.prev.current
+      const curServerAt = interp?.currentServerAt.current ?? 0
+      const prevServerAt = interp?.prevServerAt.current ?? 0
+      const currentReceivedAt = interp?.currentReceivedAt.current ?? 0
       const slowMo = viewFlagsRef.current.slowMo
       const fastMo = viewFlagsRef.current.fastMo
       const speedDiv = slowMo ? 0.5 : fastMo ? 2.0 : 1.0
@@ -2790,13 +2765,8 @@ function WorldSprite({
       // Adapt canvas resolution to the camera: zoomed-out views need a
       // fraction of the world-sized bitmap, so skip uploading pixels the
       // screen can't display anyway.
-      const targetScale = pickRenderScale(renderZoom, LOW_PERF)
-      if (targetScale !== renderScaleRef.current) {
-        renderScaleRef.current = targetScale
-        setRenderScale(targetScale)
-      }
       const detailBucket = zoomDetailLevel(renderZoom)
-      const uiKey = `${selectedOrgIdRef.current ?? ''}|${overlayRef.current ?? ''}|${focusRef.current}|${viewFlagsRef.current.territory ? 't' : ''}${viewFlagsRef.current.names ? 'n' : ''}${viewFlagsRef.current.thoughts ? 'h' : ''}${viewFlagsRef.current.animals ? 'a' : ''}${viewFlagsRef.current.grid ? 'g' : ''}|${detailBucket}`
+      const uiKey = `${selectedOrgIdRef.current ?? ''}|${overlayRef.current ?? ''}|${focusRef.current}|${viewFlagsRef.current.territory ? 't' : ''}${viewFlagsRef.current.names ? 'n' : ''}${viewFlagsRef.current.thoughts ? 'h' : ''}${viewFlagsRef.current.animals ? 'a' : ''}${viewFlagsRef.current.grid ? 'g' : ''}|${detailBucket}|${cameraStateRef.current.x}|${cameraStateRef.current.y}|${renderZoom}`
       const settled =
         t >= PREDICT_CAP && lastDrawnT >= PREDICT_CAP && curServerAt === lastDrawnAt && uiKey === lastDrawnUI
       if (settled) return
@@ -2903,20 +2873,38 @@ function WorldSprite({
         if (c1 > c0 && r1 > r0) bounds = { c0, c1, r0, r1 }
       }
 
-      const scale = renderScaleRef.current
-      dyn.ctx.setTransform(scale, 0, 0, scale, 0, 0)
-      drawWorldOnCanvas(
-        dyn.ctx,
-        enrichedWorld,
-        selectedOrgIdRef.current,
-        overlayRef.current,
-        focusRef.current,
-        viewFlagsRef.current,
-        bounds,
-        renderZoom,
-        scale,
+      const scale = pickRenderScale(renderZoom, LOW_PERF)
+      const cam = cameraStateRef.current
+      ctx.setTransform(1, 0, 0, 1, 0, 0)
+      ctx.fillStyle = '#1a4a80'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      ctx.setTransform(
+        dpr * renderZoom,
+        0,
+        0,
+        dpr * renderZoom,
+        dpr * (viewportDims.w / 2 - cam.x * renderZoom),
+        dpr * (viewportDims.h / 2 - cam.y * renderZoom),
       )
-      dyn.markDirty()
+      try {
+        drawWorldOnCanvas(
+          ctx,
+          enrichedWorld,
+          selectedOrgIdRef.current,
+          overlayRef.current,
+          focusRef.current,
+          viewFlagsRef.current,
+          bounds,
+          renderZoom,
+          scale,
+        )
+      } catch (error) {
+        stopped = true
+        cancelAnimationFrame(raf)
+        logger.error('2d-world', 'Drawing failed', error)
+        onDrawError('The world could not be drawn. Retry the renderer to restore the map.')
+        return
+      }
 
       lastDrawnAt = curServerAt
       lastDrawnT = t
@@ -2924,7 +2912,7 @@ function WorldSprite({
 
       if (!hasDrawn.current) {
         hasDrawn.current = true
-        requestAnimationFrame(() => requestAnimationFrame(onFirstDraw))
+        onFirstDraw()
       }
     }
 
@@ -2941,13 +2929,14 @@ function WorldSprite({
       // rebuild several times per second - the single biggest source of
       // frame stalls in the whole app.
     }
-  }, [interp, dyn, onFirstDraw, cameraStateRef, viewportDims, rendererPaused])
+  }, [interp, onFirstDraw, onDrawError, cameraStateRef, viewportDims, rendererPaused])
 
   return (
-    <>
-      <Transform x={atX} y={atY} />
-      <Sprite width={W} height={H} dynamicSrc={dyn.id} color="#ffffff" zIndex={0} />
-    </>
+    <canvas
+      ref={canvasRef}
+      aria-label="World terrain and inhabitants"
+      style={{ display: 'block', width: '100%', height: '100%' }}
+    />
   )
 }
 
@@ -2993,22 +2982,11 @@ export function WorldView({
   const cameraStateRef = useRef({ x: cx, y: cy, zoom: 1.5 })
   const [dims, setDims] = useState({ w: 0, h: 0 })
   const [mapReady, setMapReady] = useState(false)
-  // Stable identity: WorldSprite's frame-loop effect depends on this
+  // Stable identity: WorldCanvas's frame-loop effect depends on this
   // callback - an inline arrow restarted that loop on every publish.
   const handleFirstDraw = useCallback(() => setMapReady(true), [])
-  const gameControlsRef = useRef<GameControls | null>(null)
-  const rendererPausedRef = useRef(rendererPaused)
-  rendererPausedRef.current = rendererPaused
-
-  const handleGameReady = useCallback((controls: GameControls) => {
-    gameControlsRef.current = controls
-    syncRendererLoopPause(controls, rendererPausedRef.current)
-  }, [])
-
-  useEffect(() => {
-    const controls = gameControlsRef.current
-    if (controls) syncRendererLoopPause(controls, rendererPaused)
-  }, [rendererPaused])
+  const [drawError, setDrawError] = useState<string | null>(null)
+  const [rendererKey, setRendererKey] = useState(0)
 
   const followTarget = followOrgId
     ? (() => {
@@ -3173,57 +3151,57 @@ export function WorldView({
       }}
       onClick={handleClick}
     >
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background: '#1a4a80',
-          zIndex: 10,
-          pointerEvents: 'none',
-          opacity: mapReady ? 0 : 1,
-          transition: 'opacity 280ms ease-out',
-        }}
-      />
-      {dims.w > 0 && (
-        <Game
-          gravity={0}
-          width={dims.w}
-          height={dims.h}
-          onReady={handleGameReady}
-          style={{ display: 'block' }}
+      {dims.w > 0 && dims.h > 0 && (
+        <>
+          <WorldCanvas
+            key={rendererKey}
+            world={world}
+            interp={interp}
+            selectedOrgId={selectedOrgId}
+            overlay={overlay}
+            focus={focus}
+            viewFlags={viewFlags}
+            rendererPaused={rendererPaused}
+            onFirstDraw={handleFirstDraw}
+            onDrawError={setDrawError}
+            cameraStateRef={cameraStateRef}
+            viewportDims={dims}
+          />
+          <MapCameraController
+            commandRef={commandRef}
+            worldW={W}
+            worldH={H}
+            containerW={dims.w}
+            containerH={dims.h}
+            containerEl={containerRef.current}
+            cameraStateRef={cameraStateRef}
+            followTarget={followTarget}
+          />
+        </>
+      )}
+      {drawError && (
+        <div
+          role="alert"
+          data-map-ui
+          style={{
+            position: 'absolute',
+            inset: '35% 15%',
+            padding: 24,
+            background: '#241f19',
+            color: '#fff',
+            zIndex: 20,
+          }}
         >
-          <World background="#1a4a80">
-            <Camera2D />
-
-            <Entity>
-              <WorldSprite
-                world={world}
-                interp={interp}
-                selectedOrgId={selectedOrgId}
-                overlay={overlay}
-                focus={focus}
-                viewFlags={viewFlags}
-                rendererPaused={rendererPaused}
-                onFirstDraw={handleFirstDraw}
-                atX={cx}
-                atY={cy}
-                cameraStateRef={cameraStateRef}
-                viewportDims={dims}
-              />
-            </Entity>
-
-            <MapCameraController
-              commandRef={commandRef}
-              worldW={W}
-              worldH={H}
-              containerW={dims.w}
-              containerH={dims.h}
-              containerEl={containerRef.current}
-              cameraStateRef={cameraStateRef}
-              followTarget={followTarget}
-            />
-          </World>
-        </Game>
+          <p>{drawError}</p>
+          <button
+            onClick={() => {
+              setDrawError(null)
+              setRendererKey((key) => key + 1)
+            }}
+          >
+            Retry renderer
+          </button>
+        </div>
       )}
       {mapReady && !viewFlags.hideUI && (
         <WorldMapHud
