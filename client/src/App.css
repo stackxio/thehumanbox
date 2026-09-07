@@ -3315,156 +3315,6 @@ body.thb-photo-mode .header:hover {
   line-height: 1.45;
 }
 
-/* ── 3D-beta invitation toast (Try3DToast.tsx) ─────────────────────────── */
-.try-3d-toast {
-  position: fixed;
-  left: 50%;
-  bottom: 76px;
-  transform: translateX(-50%);
-  z-index: 9000;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  max-width: min(560px, calc(100vw - 32px));
-  padding: 12px 14px 12px 14px;
-  background: linear-gradient(180deg, rgba(36, 30, 24, 0.96), rgba(20, 17, 13, 0.96));
-  border: 1px solid rgba(160, 130, 90, 0.3);
-  border-radius: 14px;
-  color: #e5ddc7;
-  font-family: ui-sans-serif, system-ui, sans-serif;
-  box-shadow:
-    0 10px 32px -8px rgba(0, 0, 0, 0.55),
-    0 2px 6px rgba(0, 0, 0, 0.35),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  animation: try3d-in 360ms cubic-bezier(0.2, 0.9, 0.25, 1.1);
-}
-.try-3d-toast.leaving {
-  animation: try3d-out 220ms ease forwards;
-}
-@keyframes try3d-in {
-  0% {
-    opacity: 0;
-    transform: translate(-50%, 18px) scale(0.96);
-  }
-  100% {
-    opacity: 1;
-    transform: translate(-50%, 0) scale(1);
-  }
-}
-@keyframes try3d-out {
-  0% {
-    opacity: 1;
-    transform: translate(-50%, 0) scale(1);
-  }
-  100% {
-    opacity: 0;
-    transform: translate(-50%, 8px) scale(0.97);
-  }
-}
-.try-3d-toast__icon {
-  flex: 0 0 auto;
-  width: 30px;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(120, 90, 55, 0.18);
-  border: 1px solid rgba(160, 130, 90, 0.3);
-  border-radius: 9px;
-}
-.try-3d-toast__body {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-.try-3d-toast__title {
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #f0eada;
-}
-.try-3d-toast__beta {
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: linear-gradient(180deg, #d8b270, #8a6432);
-  color: #1a1208;
-  box-shadow:
-    0 0 0 1px rgba(200, 160, 100, 0.4),
-    0 1px 2px rgba(0, 0, 0, 0.3);
-}
-.try-3d-toast__sub {
-  margin-top: 3px;
-  font-size: 11.5px;
-  color: #aaa190;
-  line-height: 1.4;
-}
-.try-3d-toast__cta {
-  flex: 0 0 auto;
-  padding: 8px 14px;
-  font-size: 12.5px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  background: linear-gradient(180deg, #d8b270, #9a6f3a);
-  color: #1a1208;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  transition:
-    transform 80ms ease,
-    box-shadow 120ms ease,
-    filter 120ms ease;
-  box-shadow:
-    0 1px 0 rgba(255, 235, 200, 0.25) inset,
-    0 2px 8px rgba(120, 80, 40, 0.45);
-}
-.try-3d-toast__cta:hover {
-  filter: brightness(1.08);
-  transform: translateY(-1px);
-}
-.try-3d-toast__cta:active {
-  transform: translateY(0);
-  filter: brightness(0.95);
-}
-.try-3d-toast__cta:focus-visible {
-  outline: 2px solid #e5ddc7;
-  outline-offset: 2px;
-}
-.try-3d-toast__close {
-  flex: 0 0 auto;
-  width: 26px;
-  height: 26px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  line-height: 1;
-  background: transparent;
-  color: #8a8170;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  cursor: pointer;
-  transition:
-    background 120ms ease,
-    color 120ms ease,
-    border-color 120ms ease;
-}
-.try-3d-toast__close:hover {
-  color: #e5ddc7;
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.08);
-}
-.try-3d-toast__close:focus-visible {
-  outline: 2px solid #e5ddc7;
-  outline-offset: 2px;
-}
-
 @media (max-width: 1080px) {
   .header-actions .lang-btn .btn-label {
     display: none;
@@ -3492,20 +3342,6 @@ body.thb-photo-mode .header:hover {
   .idle-resume-panel {
     margin: 0 16px;
     padding: 22px 20px;
-  }
-}
-
-@media (max-width: 520px) {
-  .try-3d-toast {
-    gap: 10px;
-    padding: 10px 10px 10px 12px;
-  }
-  .try-3d-toast__sub {
-    display: none;
-  }
-  .try-3d-toast__cta {
-    padding: 7px 12px;
-    font-size: 12px;
   }
 }
 
@@ -4711,7 +4547,6 @@ body.thb-colorblind .org-sick-badge {
 }
 
 @media (max-width: 767px) {
-  .try-3d-toast,
   .update-toast {
     bottom: calc(116px + env(safe-area-inset-bottom, 0px));
   }

@@ -36,7 +36,6 @@ import { ModalRouter } from './components/ModalRouter'
 import { ThreeDLoading } from './components/ThreeDLoading'
 import { ThreeDErrorBoundary } from './components/ThreeDErrorBoundary'
 import { webglAvailable } from './lib/webgl'
-import { Try3DToast } from './components/Try3DToast'
 import { MobileBanner } from './components/MobileBanner'
 import { WelcomeModal } from './components/WelcomeModal'
 import { UpdateToast } from './components/UpdateToast'
@@ -643,7 +642,6 @@ function LiveApp() {
           />
         )}
 
-        {world && <Try3DToast />}
         <MobileBanner />
         {world && <WelcomeModal />}
         <UpdateToast />

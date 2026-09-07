@@ -1,4 +1,5 @@
 import { WorldToolSearch } from './WorldToolSearch'
+import { ToolSprite } from './ToolSprite'
 import { useState } from 'react'
 import clsx from 'clsx'
 import {
@@ -123,7 +124,7 @@ export function SandboxToolbar({
               title={c.id === 'maps' && hasActiveMapLayer ? 'maps · layer active' : c.label}
             >
               <span className="sandbox-tab-icon" aria-hidden="true">
-                {c.icon}
+                <ToolSprite icon={c.icon} />
               </span>
               <span className="sandbox-tab-label">{c.label}</span>
             </button>
@@ -140,7 +141,7 @@ export function SandboxToolbar({
             title={cat.tools.some((tool) => tool.view) ? 'Clear map layers' : 'Cursor — stop placing'}
           >
             <span className="sandbox-tool-icon" aria-hidden="true">
-              🖱️
+              <ToolSprite icon="🖱️" />
             </span>
             <span className="sandbox-tool-label">
               {cat.tools.some((tool) => tool.view) ? 'clear' : 'cursor'}
@@ -167,7 +168,7 @@ export function SandboxToolbar({
                 title={t.label}
               >
                 <span className="sandbox-tool-icon" aria-hidden="true">
-                  {t.icon}
+                  <ToolSprite icon={t.icon} />
                 </span>
                 <span className="sandbox-tool-label">{t.label}</span>
               </button>

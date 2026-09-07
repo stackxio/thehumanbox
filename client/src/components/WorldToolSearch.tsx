@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { ToolSprite } from './ToolSprite'
 import type { SandboxTool } from '../simulation/sandbox'
 import { searchWorldTools } from './tool-search'
 import './world-tool-search.css'
@@ -94,7 +95,7 @@ export function WorldToolSearch({ onPick }: { onPick: (tool: SandboxTool) => voi
               {results.map(({ category, tool }) => (
                 <button key={tool.id} onClick={() => pick(tool)}>
                   <span className="tool-search-icon" aria-hidden="true">
-                    {tool.icon}
+                    <ToolSprite icon={tool.icon} />
                   </span>
                   <span>
                     <strong>{tool.label}</strong>
