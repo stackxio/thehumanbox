@@ -16,7 +16,7 @@ thb-lab = "thehumanbox_lab.cli:main"
 [project.optional-dependencies]
 dev = [
   "pytest>=8.0",
-  "ruff==0.16.0",
+  "ruff==0.16.6",
 ]
 trace = [
   "websockets>=12.0",
