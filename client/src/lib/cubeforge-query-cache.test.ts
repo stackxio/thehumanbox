@@ -1,5 +1,6 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { createRequire } from 'node:module'
+import { dirname, join } from 'node:path'
 import { runInNewContext } from 'node:vm'
 import { describe, expect, it } from 'vitest'
 
@@ -11,8 +12,13 @@ interface World {
 }
 
 // CubeForge does not export its ECS constructor. Exercise the installed bundle
-// so this regression also catches a missing pnpm patch in a fresh CI install.
-const source = readFileSync(createRequire(import.meta.url).resolve('cubeforge'), 'utf8')
+// so this regression checks the installed release, including split bundles.
+const bundleDirectory = dirname(createRequire(import.meta.url).resolve('cubeforge'))
+const source =
+  readdirSync(bundleDirectory)
+    .filter((name) => name.endsWith('.js'))
+    .map((name) => readFileSync(join(bundleDirectory, name), 'utf8'))
+    .find((source) => source.includes('var ECSWorld = class {')) ?? ''
 const start = source.indexOf('var ECSWorld = class {')
 const end = source.indexOf('// ../../packages/core/src/ecs/worldQueries.ts', start)
 if (start < 0 || end < 0) throw new Error('CubeForge bundle changed; update the ECS test loader')

@@ -1,6 +1,4 @@
 allowBuilds:
   core-js: false
 minimumReleaseAgeExclude:
-  - cubeforge@0.9.0
-patchedDependencies:
-  cubeforge@0.9.0: patches/cubeforge@0.9.0.patch
+  - cubeforge@0.9.1

@@ -1,3 +1,4 @@
+import { worldRenderScale, interpolationFactor, shouldRenderFrame } from './render-timing'
 import { terrainDetail } from './terrain-detail'
 import { MapCameraController } from './MapCameraController'
 import { WorldMapHud } from './WorldMapHud'
@@ -747,23 +748,6 @@ function getWaterFxLayers(scale: number): WaterFxLayers | null {
   }
   _waterFx = { key, scale, shimmer, stars }
   return _waterFx
-}
-
-// The dynamic canvas used to be world-sized (4800x2400 for the 600x300
-// grid) and its entire bitmap was re-uploaded to the GPU every frame -
-// tens of MB of texture traffic per frame that capped rendering at
-// slideshow framerates. The engine samples the texture linearly anyway,
-// so we render into a canvas sized for what the screen can actually
-// show at the current camera zoom. Quantized to 1/8 steps so pinch-
-// zooming doesn't thrash canvas/texture reallocation every frame.
-function pickRenderScale(zoom: number, lowPerf: boolean): number {
-  if (!Number.isFinite(zoom) || zoom <= 0) return 1
-  const dpr = Math.min(2, window.devicePixelRatio || 1)
-  const needed = zoom * dpr
-  if (needed >= 1) return 1
-  const stepped = Math.ceil(needed * 8) / 8
-  const floor = lowPerf ? 0.5 : 0.25
-  return Math.min(1, Math.max(floor, stepped))
 }
 
 function vnHash(x: number, y: number): number {
@@ -2698,8 +2682,14 @@ function WorldSprite({
 
   const W = world.grid.width * TILE
   const H = world.grid.height * TILE
-  const [renderScale, setRenderScale] = useState(1)
-  const renderScaleRef = useRef(1)
+  const [renderScale, setRenderScale] = useState(() =>
+    worldRenderScale(
+      viewportDims ? Math.min(viewportDims.w / W, viewportDims.h / H) * 0.95 : 1,
+      window.devicePixelRatio || 1,
+      LOW_PERF,
+    ),
+  )
+  const renderScaleRef = useRef(renderScale)
   // Even dimensions keep the pixel-art grid aligned when scaled.
   const dynW = Math.max(TILE, Math.round((W * renderScale) / 2) * 2)
   const dynH = Math.max(TILE, Math.round((H * renderScale) / 2) * 2)
@@ -2750,18 +2740,16 @@ function WorldSprite({
     let lastDrawnAt: number = 0
     let lastDrawnT: number = -1
     let lastDrawnUI: string = ''
-    let lowPerfFrameSkip = 0
+    let lastFrameAt = -Infinity
 
-    const tick = () => {
+    const tick = (now: number) => {
       if (stopped) return
       raf = requestAnimationFrame(tick)
 
-      if (LOW_PERF) {
-        lowPerfFrameSkip = (lowPerfFrameSkip + 1) % 2
-        if (lowPerfFrameSkip === 1) return
-      }
+      if (document.hidden || !shouldRenderFrame(now, lastFrameAt, LOW_PERF ? 24 : 30)) return
+      lastFrameAt = now
 
-      const w = worldRef.current
+      const w = interp.current.current ?? worldRef.current
       if (!w) return
 
       if (w.grid.depth_map) cachedDepth.current = w.grid.depth_map as number[][]
@@ -2776,27 +2764,21 @@ function WorldSprite({
       const fastMo = viewFlagsRef.current.fastMo
       const speedDiv = slowMo ? 0.5 : fastMo ? 2.0 : 1.0
       const interval = Math.max(50, curServerAt - prevServerAt) / speedDiv
-      const RENDER_LAG_MS = Math.min(120, interval * 0.5)
       const PREDICT_CAP = 2.0
-      const t =
-        cur && prev && interval > 0
-          ? Math.max(
-              0,
-              Math.min(PREDICT_CAP, (performance.now() - currentReceivedAt - RENDER_LAG_MS) / interval),
-            )
-          : 1
+      const t = cur && prev ? interpolationFactor(now, currentReceivedAt, interval) : 1
 
       const renderZoom = cameraStateRef?.current.zoom ?? 1
       // Adapt canvas resolution to the camera: zoomed-out views need a
       // fraction of the world-sized bitmap, so skip uploading pixels the
       // screen can't display anyway.
-      const targetScale = pickRenderScale(renderZoom, LOW_PERF)
+      const targetScale = worldRenderScale(renderZoom, window.devicePixelRatio || 1, LOW_PERF)
       if (targetScale !== renderScaleRef.current) {
         renderScaleRef.current = targetScale
         setRenderScale(targetScale)
       }
       const detailBucket = zoomDetailLevel(renderZoom)
-      const uiKey = `${selectedOrgIdRef.current ?? ''}|${overlayRef.current ?? ''}|${focusRef.current}|${viewFlagsRef.current.territory ? 't' : ''}${viewFlagsRef.current.names ? 'n' : ''}${viewFlagsRef.current.thoughts ? 'h' : ''}${viewFlagsRef.current.animals ? 'a' : ''}${viewFlagsRef.current.grid ? 'g' : ''}|${detailBucket}`
+      const camera = cameraStateRef?.current
+      const uiKey = `${selectedOrgIdRef.current ?? ''}|${overlayRef.current ?? ''}|${focusRef.current}|${JSON.stringify(viewFlagsRef.current)}|${detailBucket}|${camera?.x}|${camera?.y}|${renderZoom}|${renderScale}`
       const settled =
         t >= PREDICT_CAP && lastDrawnT >= PREDICT_CAP && curServerAt === lastDrawnAt && uiKey === lastDrawnUI
       if (settled) return
@@ -2903,7 +2885,7 @@ function WorldSprite({
         if (c1 > c0 && r1 > r0) bounds = { c0, c1, r0, r1 }
       }
 
-      const scale = renderScaleRef.current
+      const scale = renderScale
       dyn.ctx.setTransform(scale, 0, 0, scale, 0, 0)
       drawWorldOnCanvas(
         dyn.ctx,
@@ -2941,7 +2923,7 @@ function WorldSprite({
       // rebuild several times per second - the single biggest source of
       // frame stalls in the whole app.
     }
-  }, [interp, dyn, onFirstDraw, cameraStateRef, viewportDims, rendererPaused])
+  }, [interp, dyn, onFirstDraw, cameraStateRef, viewportDims, rendererPaused, renderScale])
 
   return (
     <>
@@ -3186,6 +3168,7 @@ export function WorldView({
       />
       {dims.w > 0 && (
         <Game
+          mode="onDemand"
           gravity={0}
           width={dims.w}
           height={dims.h}

@@ -7,6 +7,7 @@ import {
   type HumanSex,
 } from '../2d/world/character-visuals'
 import { pickAnimalTile, SPRITE, TILE_PX, type Tile } from './sprite-layout'
+import { rasterizedAtlas } from './rasterized-atlas'
 
 export { pickAnimalTile, SPRITE, TILE_PX }
 export type { AgeStage, Tile }
@@ -47,8 +48,8 @@ export function drawPeopleTile(
   size: number,
   flipped = false,
 ) {
-  const img = ATLAS_PEOPLE
-  if (!img.complete || img.naturalWidth === 0) return false
+  const img = rasterizedAtlas(ATLAS_PEOPLE)
+  if (!img) return false
   const [col, row] = tile
   ctx.save()
   ctx.translate(flipped ? dx + size : dx, dy)
