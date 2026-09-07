@@ -1,4 +1,4 @@
-import { shorelineColors } from './landscape-style'
+import { shorelineColors, vegetationSeason, landscapeHash } from './landscape-style'
 /**
  * Cosmetic / atmospheric decorations rendered onto the 2D world
  * canvas: trees (drawn into the cached base layer), clouds, and
@@ -97,7 +97,8 @@ export function drawTrees(
   season = 'summer',
 ) {
   if (!biomes || !ATLAS_TOWN.complete) return
-  const TREE_SIZE = 16
+  season = vegetationSeason(season)
+  const TREE_SIZE = 25
   const trees: Array<{ cx: number; cy: number; sz: number; sprite: typeof SPRITE.trees.oak_mid }> = []
 
   const placed: Uint8Array = new Uint8Array(width * height)
@@ -131,8 +132,7 @@ export function drawTrees(
 
     const worldX = x + originX
     const worldY = y + originY
-    let hash = (worldX * 73856093) ^ (worldY * 19349663)
-    hash = ((hash ^ (hash >>> 13)) * 0x5bd1e995) >>> 0
+    const hash = landscapeHash(worldX, worldY)
     const r0 = (hash & 0xff) / 255
     const r1 = ((hash >>> 8) & 0xff) / 255
 
@@ -140,7 +140,7 @@ export function drawTrees(
     let spacing = 2
     switch (biome) {
       case BIOME_ID.FOREST:
-        chance = 0.32
+        chance = 0.42
         spacing = 2
         break
       case BIOME_ID.WETLAND:
@@ -183,7 +183,7 @@ export function drawTrees(
     // Region-filtered repaints still run the global placement pass
     // (tree existence depends on every higher-priority neighbour) but
     // only paint sprites anchored inside the region.
-    if (only && (x < only.x0 - 2 || x > only.x1 + 2 || y < only.y0 - 2 || y > only.y1 + 2)) {
+    if (only && (x < only.x0 - 3 || x > only.x1 + 3 || y < only.y0 - 3 || y > only.y1 + 3)) {
       continue
     }
 
@@ -263,15 +263,17 @@ export function drawNaturalDecor(
       const biome = bRow[x] ?? 0
       const worldX = x + originX
       const worldY = y + originY
-      let hash = ((worldX * 374761393) ^ (worldY * 668265263)) >>> 0
-      hash = ((hash ^ (hash >>> 13)) * 1274126177) >>> 0
+      const hash = landscapeHash(worldX, worldY)
       const r0 = (hash & 0xff) / 255
       const r1 = ((hash >>> 8) & 0xff) / 255
       const r2 = ((hash >>> 16) & 0xff) / 255
       const px = x * TILE
       const py = y * TILE
 
-      if (t === TILE_ID.ROCK || (t === TILE_ID.SAND && biome === BIOME_ID.DESERT && r0 < 0.04)) {
+      if (
+        (t === TILE_ID.ROCK && r0 < 0.25) ||
+        (t === TILE_ID.SAND && biome === BIOME_ID.DESERT && r0 < 0.04)
+      ) {
         const sz = 2 + Math.floor(r1 * 2)
         const rockX = Math.round(px + TILE / 2 + (r2 - 0.5) * TILE * 0.4 - sz / 2)
         const rockY = Math.round(py + TILE / 2 + (r0 - 0.5) * TILE * 0.4)
@@ -291,12 +293,18 @@ export function drawNaturalDecor(
       }
       if (t !== TILE_ID.GRASS && t !== TILE_ID.FOOD) continue
 
-      if (biome === BIOME_ID.GRASSLAND && r0 < 0.08) {
-        const colors = ['#d65a78', '#e8c044', '#a87fd6', '#e58a3a']
+      if (
+        biome === BIOME_ID.GRASSLAND &&
+        r0 < (Math.sin(worldX * 0.13) + Math.sin(worldY * 0.17) > 1 ? 0.22 : 0.018)
+      ) {
+        const colors = ['#f1b9bf', '#f6e3a0', '#cfc0e9', '#f5eade']
         ctx.fillStyle = colors[Math.floor(r2 * colors.length)]
         const fx = px + TILE / 2 + (r1 - 0.5) * TILE * 0.4
         const fy = py + TILE / 2 + (r2 - 0.5) * TILE * 0.4
-        ctx.fillRect(fx - 1, fy - 1, 3, 3)
+        ctx.fillRect(Math.round(fx) - 1, Math.round(fy), 3, 1)
+        ctx.fillRect(Math.round(fx), Math.round(fy) - 1, 1, 3)
+        ctx.fillStyle = '#e4bc68'
+        ctx.fillRect(Math.round(fx), Math.round(fy), 1, 1)
         ctx.fillStyle = '#3a6b32'
         ctx.fillRect(fx, fy + 1, 1, 2)
       } else if (biome === BIOME_ID.FOREST && r0 < 0.06) {
@@ -360,6 +368,9 @@ export function drawNaturalDecor(
           if (beach & EDGE_SOUTH) ctx.fillRect(px, py + TILE - 2, TILE, 2)
           if (beach & EDGE_WEST) ctx.fillRect(px, py, 2, TILE)
           if (beach & EDGE_EAST) ctx.fillRect(px + TILE - 2, py, 2, TILE)
+          ctx.fillStyle = 'rgba(53,66,48,0.48)'
+          if (beach & EDGE_SOUTH) ctx.fillRect(px, py + TILE - 2, TILE, 2)
+          if (beach & EDGE_EAST) ctx.fillRect(px + TILE - 2, py, 2, TILE)
           ctx.fillStyle = rim
           if (beach & EDGE_NORTH) ctx.fillRect(px + 1, py, TILE - 2, 1)
           if (beach & EDGE_SOUTH) ctx.fillRect(px + 1, py + TILE - 1, TILE - 2, 1)
@@ -378,8 +389,7 @@ export function drawNaturalDecor(
       } else {
         const worldX = x + originX
         const worldY = y + originY
-        let hash = ((worldX * 374761393) ^ (worldY * 668265263)) >>> 0
-        hash = ((hash ^ (hash >>> 13)) * 1274126177) >>> 0
+        const hash = landscapeHash(worldX, worldY)
         ctx.fillStyle = 'rgba(175,214,206,0.24)'
         ctx.fillRect(px + 1 + ((hash >>> 8) & 1), py + 2, 4, 1)
         ctx.fillStyle = 'rgba(74,101,91,0.3)'
@@ -407,8 +417,7 @@ export function drawNaturalDecor(
       if (grassEdges.length === 0) continue
       const worldX = x + originX
       const worldY = y + originY
-      let hash = ((worldX * 374761393) ^ (worldY * 668265263)) >>> 0
-      hash = ((hash ^ (hash >>> 13)) * 1274126177) >>> 0
+      const hash = landscapeHash(worldX, worldY)
       if ((hash & 0xff) > 110) continue
       const r1 = ((hash >>> 8) & 0xff) / 255
       const r2 = ((hash >>> 16) & 0xff) / 255

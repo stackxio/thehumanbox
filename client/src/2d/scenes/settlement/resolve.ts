@@ -14,10 +14,10 @@ export function resolveSettlementScene(world: WorldState, scene: SceneId): Scene
   const tiles = world.grid?.tiles
   if (tiles) {
     for (let dy = -RADIUS; dy <= RADIUS; dy++) {
-      const row = tiles[centerY + dy]
+      const row = tiles[centerY - (world.grid.origin_y ?? 0) + dy]
       if (!row) continue
       for (let dx = -RADIUS; dx <= RADIUS; dx++) {
-        if (row[centerX + dx] === 8) hutCount++
+        if (row[centerX - (world.grid.origin_x ?? 0) + dx] === 8) hutCount++
       }
     }
   }

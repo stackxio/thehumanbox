@@ -1,0 +1,118 @@
+.world-tool-search {
+  width: min(540px, calc(100vw - 32px));
+  max-height: min(640px, calc(100dvh - 48px));
+  padding: 22px;
+  border: 1px solid #92ad9255;
+  border-radius: 18px;
+  color: #f2efd9;
+  background: #152c30;
+  box-shadow: 0 24px 100px #041518aa;
+  font:
+    14px/1.4 system-ui,
+    sans-serif;
+}
+.world-tool-search::backdrop {
+  background: #051b24b8;
+}
+.world-tool-search header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 18px;
+}
+.world-tool-search header span {
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: #c7ce9e;
+}
+.world-tool-search h2 {
+  margin: 5px 0 0;
+  font:
+    25px/1.2 Georgia,
+    serif;
+}
+.world-tool-search header button {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid #aec19e44;
+  background: #ffffff08;
+  color: inherit;
+  font-size: 22px;
+  cursor: pointer;
+}
+.world-tool-search input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 13px;
+  color: #f3efdc;
+  background: #0e2025;
+  border: 1px solid #aec19e55;
+  border-radius: 9px;
+  font: inherit;
+}
+.world-tool-search input:focus-visible,
+.world-tool-search button:focus-visible {
+  outline: 2px solid #e6cb8d;
+  outline-offset: 2px;
+}
+.tool-search-count {
+  color: #aac2b4;
+  font-size: 12px;
+  margin: 12px 0;
+}
+.tool-search-results {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  max-height: 380px;
+  overflow-y: auto;
+  padding: 3px;
+}
+.tool-search-results button {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  text-align: left;
+  min-height: 66px;
+  padding: 10px;
+  background: #ffffff06;
+  border: 1px solid #adc5a321;
+  border-radius: 10px;
+  color: inherit;
+  cursor: pointer;
+}
+.tool-search-results button:hover {
+  background: #adc58619;
+  border-color: #acc47b77;
+}
+.tool-search-results strong {
+  display: block;
+  text-transform: capitalize;
+  font-size: 13px;
+}
+.tool-search-results small {
+  display: block;
+  font-size: 10px;
+  color: #adc1b4;
+}
+.tool-search-results button > span:last-child {
+  margin-left: auto;
+  color: #d6c891;
+}
+.tool-search-icon {
+  font-size: 21px;
+}
+.tool-search-empty {
+  padding: 20px 0;
+  color: #bdcfc2;
+}
+@media (max-width: 480px) {
+  .world-tool-search {
+    padding: 16px;
+  }
+  .tool-search-results {
+    grid-template-columns: 1fr;
+  }
+}
